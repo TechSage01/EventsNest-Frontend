@@ -1,7 +1,9 @@
-import { useEffect, useRef, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
-import { getApiBaseUrl } from "../services/api.js";
-import { deleteAward as apiDeleteAward } from "../services/awards.js";
+import { useEffect, useRef, useState } from 'react'
+import { useNavigate, useParams } from 'react-router-dom'
+import { getApiBaseUrl } from '../services/api.js'
+import { listAwards, deleteAward as apiDeleteAward } from '../services/awards.js'
+import AdminLeaderboard from '../components/AdminLeaderboard.jsx'
+import BackButton from '../components/BackButton.jsx'
 
 /* ─── helpers ─── */
 function slugify(v) {
@@ -496,7 +498,8 @@ export default function AdminEventPage({ user = null }) {
     <div style={A.page}>
       {/* ─── TOPBAR ─── */}
       <header style={A.topbar}>
-        <div>
+        <div style={A.titleBlock}>
+          <BackButton fallback="/" />
           <div style={A.kicker}>Admin Dashboard</div>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <h1 style={A.pageTitle}>{event.title}</h1>
@@ -552,6 +555,14 @@ export default function AdminEventPage({ user = null }) {
 
         {/* ─── MAIN GRID ─── */}
         <div style={A.grid}>
+
+          {canManageEvent && (
+            <div style={A.panel}>
+              <div style={A.panelHead}><span style={A.panelIcon}>📈</span> Leaderboard</div>
+              <AdminLeaderboard eventId={eventId} />
+            </div>
+          )}
+
           {/* CREATE AWARD */}
           <div style={A.panel}>
             <div style={A.panelHead}>

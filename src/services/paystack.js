@@ -1,6 +1,8 @@
 import PaystackPop from '@paystack/inline-js'
 import { getPaystackKey } from '../config/paystack.js'
 
+export const PAYSTACK_CALLBACK_URL = 'https://eventsnest.xyz/payment-success'
+
 export function openPaystackPayment({ key, email, amount, reference, metadata, onSuccess, onClose }) {
   const resolvedKey = key || getPaystackKey()
   if (!resolvedKey) {
@@ -15,6 +17,7 @@ export function openPaystackPayment({ key, email, amount, reference, metadata, o
     amount,
     reference,
     metadata,
+    callback_url: PAYSTACK_CALLBACK_URL,
     onSuccess,
     onCancel: onClose,
   })

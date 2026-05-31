@@ -296,7 +296,7 @@ export default function EventOverviewPage({ user = null }) {
   const theme        = themeMap[event.theme] || themeMap.minimal
   const rsvpCount    = event.rsvpCount || (Array.isArray(event.rsvps) ? event.rsvps.length : 0)
   const invitedGuests= Array.isArray(event.invitedGuests) ? event.invitedGuests : []
-  const shortUrl     = `eventsnest.com/${event.id?.slice(0,8) || 'preview'}`
+  const shortUrl     = `eventsnest.xyz/${event.id?.slice(0,8) || 'preview'}`
 
   return (
     <div style={{ ...s.page, background:'#111114' }}>

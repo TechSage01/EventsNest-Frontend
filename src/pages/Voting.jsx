@@ -1,7 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
+import BackButton from "../components/BackButton.jsx";
 import { getApiBaseUrl } from "../services/api.js";
-import { getPaystackKey } from "../config/paystack.js";
 
 /* ══════════════════════════════════════
    HELPERS
@@ -75,49 +75,6 @@ function extractNomineeImageUrl(v) {
     return String(img.url || img.src || img.path || img.value || "").trim();
   return "";
 }
-function getAwardVoteTotal(award) {
-  const fromRows = Array.isArray(award?.votes)
-    ? award.votes.reduce(
-        (total, vote) => total + Number(vote?.quantity || 1),
-        0,
-      )
-    : 0;
-
-  return (
-    fromRows ||
-    Number(award?.totalVotes ?? award?.votesCount ?? award?.voteCount ?? 0)
-  );
-}
-
-function getNomineeVoteTotal(nominees, nomineeName) {
-  const targetName =
-    formatDisplay(nomineeName).toLowerCase() ||
-    String(nomineeName || "").trim().toLowerCase();
-  const targetSlug = slugify(nomineeName);
-
-  if (!Array.isArray(nominees) || !targetName) return 0;
-
-  const match = nominees.find((nominee) => {
-    const nomineeNameValue = extractNomineeName(nominee);
-    const normalizedName =
-      formatDisplay(nomineeNameValue).toLowerCase() ||
-      String(nomineeNameValue || "").trim().toLowerCase();
-    const normalizedSlug = slugify(
-      nominee?.slug || nomineeNameValue || nomineeName
-    );
-
-    return normalizedName === targetName || normalizedSlug === targetSlug;
-  });
-
-  // Supports both direct field and nested API shapes.
-  return Number(
-    match?.voteCount ??
-      match?.votesCount ??
-      match?.totalVotes ??
-      match?.stats?.voteCount ??
-      0
-  );
-}
 function resolveNomineeDetails(award, input) {
   if (!award) return null;
   const target = String(input || "")
@@ -157,7 +114,6 @@ async function verifyVotePayment(ctx, response) {
     setAwards,
     setVoteMsg,
     navigate,
-    backUrl,
   } = ctx;
   try {
     const res = await fetch(
@@ -189,10 +145,8 @@ async function verifyVotePayment(ctx, response) {
           : a,
       ),
     );
-    navigate(
-      `/thank-you?type=vote&back=${encodeURIComponent(backUrl)}&title=${encodeURIComponent("Thank you for voting!")}&subtitle=${encodeURIComponent("Your vote has been recorded. You can vote again for a friend next.")}`,
-      { replace: true },
-    );
+    const ref = encodeURIComponent(response.reference || voteReference || '')
+    navigate(`/voting-success?reference=${ref}&eventId=${eventId}&awardId=${awardId}`, { replace: true });
   } catch (err) {
     setVoteMsg(err.message);
   }
@@ -206,7 +160,7 @@ export default function VotingPage() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const API_BASE = getApiBaseUrl();
-  const paystackKey = getPaystackKey();
+  const redirectingRef = useRef(false);
 
   const [event, setEvent] = useState(null);
   const [awards, setAwards] = useState([]);
@@ -267,39 +221,12 @@ export default function VotingPage() {
             : [];
         const baseAwards = rawAwards.map((a) => ({
           ...a,
-          contestants: Array.isArray(a.contestants)
-            ? a.contestants
-            : Array.isArray(a.nominees)
-              ? a.nominees
-              : [],
+          contestants: Array.isArray(a.contestants) ? a.contestants : [],
         }));
         if (cancelled) return;
         setEvent(loadedEvent);
         setAwards(baseAwards);
         setLoading(false);
-        void Promise.all(
-          baseAwards.map(async (a) => {
-            try {
-              const cRes = await fetch(
-                `${API_BASE}/awards/events/${eventId}/${a.id}/contestants`,
-              );
-              const cData = await cRes.json();
-              if (!cRes.ok) return a;
-              return {
-                ...a,
-                contestants: Array.isArray(cData.data?.contestants)
-                  ? cData.data.contestants
-                  : Array.isArray(cData.contestants)
-                    ? cData.contestants
-                    : [],
-              };
-            } catch {
-              return a;
-            }
-          }),
-        ).then((updated) => {
-          if (!cancelled && updated.length) setAwards(updated);
-        });
       } catch (err) {
         if (!cancelled) {
           setError(err.message);
@@ -312,6 +239,44 @@ export default function VotingPage() {
       cancelled = true;
     };
   }, [eventId]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadContestants() {
+      const activeAwardId = heroAward?.id || awardId;
+      const awardToLoad = awards.find((a) => a.id === activeAwardId) || heroAward;
+      if (!awardToLoad?.id || !eventId) return;
+
+      try {
+        const cRes = await fetch(
+          `${API_BASE}/awards/events/${eventId}/${awardToLoad.id}/contestants`,
+        );
+        const cData = await cRes.json();
+        if (!cRes.ok) return;
+
+        const contestants = Array.isArray(cData.data?.contestants)
+          ? cData.data.contestants
+          : Array.isArray(cData.contestants)
+            ? cData.contestants
+            : [];
+
+        if (cancelled) return;
+        setAwards((prev) =>
+          prev.map((award) =>
+            award.id === awardToLoad.id ? { ...award, contestants } : award,
+          ),
+        );
+      } catch {
+        // best-effort only
+      }
+    }
+
+    loadContestants();
+    return () => {
+      cancelled = true;
+    };
+  }, [API_BASE, awardId, eventId, heroAward?.id]);
 
   /* derive active award + nominee */
   const heroAward = awards.find((a) => a.id === awardId) || awards[0] || null;
@@ -344,11 +309,6 @@ export default function VotingPage() {
   const subtotal = quantity * 50;
   const fee = estimateFee(subtotal);
   const total = subtotal + fee;
-  const totalVotes = getAwardVoteTotal(heroAward);
-  const selectedVotes = getNomineeVoteTotal(
-    heroNominees,
-    nomDetails?.name || currentNominee,
-  );
 
   useEffect(() => {
     if (!voteReference || verifyingVote) return;
@@ -370,7 +330,6 @@ export default function VotingPage() {
       setAwards,
       setVoteMsg,
       navigate,
-      backUrl: `/public/events/${eventId}/voting/${awardIdFromQuery}`,
     }).finally(() => {
       setVerifyingVote(false);
     });
@@ -404,15 +363,36 @@ export default function VotingPage() {
       setVoteMsg("Minimum vote is 2");
       return;
     }
-    if (!paystackKey) {
-      console.error(
-        "Paystack public key missing. Check environment configuration.",
-      );
-      setVoteMsg("Paystack is not configured properly");
-      return;
-    }
     setVotingId(activeKey);
     try {
+      const totalAmountInKobo = Math.round(total * 100)
+      const normalizedNomineeName =
+        formatDisplay(currentNominee).toLowerCase() ||
+        String(currentNominee || "").trim().toLowerCase();
+      const normalizedNomineeSlug = slugify(currentNominee);
+      const resolvedNominee = heroNominees.find((nominee) => {
+        const nomineeNameValue = extractNomineeName(nominee);
+        const normalizedName =
+          formatDisplay(nomineeNameValue).toLowerCase() ||
+          String(nomineeNameValue || "").trim().toLowerCase();
+        const normalizedSlug = slugify(
+          nominee?.slug || nomineeNameValue || nominee
+        );
+        return (
+          normalizedName === normalizedNomineeName ||
+          normalizedSlug === normalizedNomineeSlug
+        );
+      });
+      const nomineeIdValue = String(
+        resolvedNominee?.id ||
+          resolvedNominee?._id ||
+          resolvedNominee?.nomineeId ||
+          resolvedNominee?.contestantId ||
+          resolvedNominee?.uuid ||
+          nomDetails?.slug ||
+          currentNominee ||
+          "",
+      );
       // 1. Make an API request to your backend to initialize the payment session
       const res = await fetch(
         `${API_BASE}/awards/events/${eventId}/${activeKey}/vote/initialize`,
@@ -420,9 +400,15 @@ export default function VotingPage() {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
+            amount: totalAmountInKobo,
             name: form.name,
             email: form.email,
             nominee: currentNominee,
+            metadata: {
+              type: 'vote',
+              nomineeId: nomineeIdValue,
+              numberOfVotes: quantity,
+            },
             quantity: quantity,
           }),
         },
@@ -436,19 +422,22 @@ export default function VotingPage() {
         );
       }
 
-      // 2. Extract the safe authorization URL provided by Paystack from your backend
-      if (data.data?.authUrl) {
-        setVoteMsg("Redirecting to secure Paystack window...");
+      const authorizationUrl = data.data?.authorization_url;
 
-        // 3. This physically routes the tab to checkout.paystack.com
-        window.location.href = data.data.authUrl;
+      if (authorizationUrl) {
+        setVoteMsg("Redirecting to secure Paystack window...");
+        redirectingRef.current = true;
+        window.location.assign(authorizationUrl);
+        return;
       } else {
         throw new Error("No checkout URL returned from server configurations.");
       }
     } catch (err) {
       setVoteMsg(err.message);
     } finally {
-      setVotingId("");
+      if (!redirectingRef.current) {
+        setVotingId("");
+      }
     }
   }
 
@@ -473,7 +462,10 @@ export default function VotingPage() {
     <div style={S.page}>
       {/* ── TOPBAR ── */}
       <header style={S.topbar}>
-        <span style={S.brandMark}>NEST✦</span>
+        <div style={S.topbarLeft}>
+          <BackButton fallback="/" />
+          <span style={S.brandMark}>NEST✦</span>
+        </div>
         <div style={S.secureTag}>
           <span style={S.secureDot} />
           <span style={{ fontSize: 13, fontWeight: 600, color: "#6b6b7a" }}>
@@ -515,10 +507,6 @@ export default function VotingPage() {
               <span style={S.statPillIcon}>₦</span>
               <span>₦50 per vote</span>
             </div>
-            <div style={S.statPill}>
-              <span style={S.statPillIcon}>🗳</span>
-              <span>{totalVotes.toLocaleString()} votes</span>
-            </div>
           </div>
 
           {/* ── NOMINEE PHOTO + RANK ── */}
@@ -541,33 +529,9 @@ export default function VotingPage() {
                 </span>
               </div>
             )}
-            {/* overlay: name + vote count badge */}
+            {/* overlay: name */}
             <div style={S.nomineePhotoOverlay}>
               <div style={S.nomineeNameOverlay}>{nomName}</div>
-              <div style={S.nomineeVoteBadge}>
-                <span
-                  style={{
-                    fontSize: 22,
-                    fontWeight: 900,
-                    color: "#c4b5fd",
-                    letterSpacing: "-1px",
-                    lineHeight: 1,
-                  }}
-                >
-                  {totalVotes}
-                </span>
-                <span
-                  style={{
-                    fontSize: 11,
-                    color: "#9ca3af",
-                    fontWeight: 600,
-                    textTransform: "uppercase",
-                    letterSpacing: ".5px",
-                  }}
-                >
-                  Total Votes
-                </span>
-              </div>
             </div>
           </div>
 
@@ -822,7 +786,6 @@ export default function VotingPage() {
               </div>
 
               <BRow label="Contestant" value={nomName || "—"} />
-              <BRow label="Contestant Votes" value={String(selectedVotes)} />
               <BRow label="Category" value={heroAward?.title || "—"} />
               <BRow label="Price per Vote" value={formatMoney(50)} />
               <BRow label="Number of Votes" value={String(quantity)} />
@@ -1039,11 +1002,12 @@ const S = {
 
   /* topbar */
   topbar: {
-    height: 56,
+    minHeight: 56,
     display: "flex",
     alignItems: "center",
     justifyContent: "space-between",
-    padding: "0 24px",
+    gap: 12,
+    padding: "8px clamp(12px, 3vw, 24px)",
     background: "rgba(12,12,16,0.92)",
     backdropFilter: "blur(20px)",
     WebkitBackdropFilter: "blur(20px)",
@@ -1052,6 +1016,7 @@ const S = {
     top: 0,
     zIndex: 100,
   },
+  topbarLeft: { display: "flex", alignItems: "center", gap: 12, minWidth: 0 },
   brandMark: {
     fontFamily: "'Arial Black',sans-serif",
     fontWeight: 900,

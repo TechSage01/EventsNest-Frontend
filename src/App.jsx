@@ -12,6 +12,7 @@ import PublicEventPage from './pages/PublicEventPage'
 import VotingPage from './pages/Voting'
 import TicketPage from './pages/TicketPage'
 import ThankYouPage from './pages/ThankYouPage'
+import PaymentSuccessPage from './pages/PaymentSuccessPage'
 import ScannerPage from './pages/ScannerPage'
 import { useAuth } from './context/AuthContext.jsx'
 
@@ -45,6 +46,9 @@ export default function App() {
       
       {/* Other Routes */}
       <Route path="/thank-you" element={<ThankYouPage />} />
+      <Route path="/ticket-success" element={<ThankYouPage />} />
+      <Route path="/voting-success" element={<ThankYouPage />} />
+      <Route path="/payment-success" element={<PaymentSuccessPage />} />
       <Route path="/tickets/:ticketId" element={<TicketPage />} />
       <Route path="/events/:eventId/scan" element={user ? <ScannerPage user={user} /> : <Navigate to="/signup" replace />} />
 

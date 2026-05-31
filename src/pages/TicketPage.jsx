@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { QRCodeSVG } from 'qrcode.react'
+import BackButton from '../components/BackButton.jsx'
 import { getApiBaseUrl } from '../services/api.js'
 
 export default function TicketPage() {
@@ -66,7 +67,7 @@ export default function TicketPage() {
         setEvent(payload.data?.event)
         const ticketPageUrl = `/tickets/${payload.data?.ticket?.ticketId}`
         navigate(
-          `/thank-you?type=ticket&back=${encodeURIComponent(`/public/events/${payload.data?.ticket?.eventId}`)}&ticketUrl=${encodeURIComponent(ticketPageUrl)}&title=${encodeURIComponent('Thank you for your payment')}&subtitle=${encodeURIComponent('Your ticket is confirmed. You can reserve another one for a friend next.')}`,
+          `/ticket-success?back=${encodeURIComponent(`/public/events/${payload.data?.ticket?.eventId}`)}&ticketUrl=${encodeURIComponent(ticketPageUrl)}&title=${encodeURIComponent('Thank you for your payment')}&subtitle=${encodeURIComponent('Your ticket is confirmed. You can reserve another one for a friend next.')}`,
           { replace: true }
         )
       } catch (err) {
@@ -117,6 +118,7 @@ export default function TicketPage() {
   return (
     <div style={styles.page}>
       <main style={styles.main}>
+        <BackButton fallback="/" style={styles.backButton} />
         <section style={styles.card}>
           {searchParams.get('duplicate') === '1' && (
             <div style={styles.notice}>
@@ -165,6 +167,7 @@ function Shell({ message, actionLabel, onAction }) {
   return (
     <div style={styles.shell}>
       <div style={styles.shellCard}>
+        <BackButton fallback="/" style={styles.shellBackButton} />
         <div style={styles.shellTitle}>{message}</div>
         {onAction && (
           <button type="button" style={styles.primaryBtn} onClick={onAction}>
@@ -180,8 +183,10 @@ const styles = {
   page: { minHeight: '100vh', background: 'radial-gradient(circle at top, rgba(167,139,250,0.12), transparent 28%), linear-gradient(180deg, #101014 0%, #0b0b10 100%)', color: '#f1f1f5', fontFamily: "'DM Sans', system-ui, sans-serif" },
   shell: { minHeight: '100vh', display: 'grid', placeItems: 'center', background: '#101014', color: '#f1f1f5', fontFamily: "'DM Sans', system-ui, sans-serif", padding: '24px' },
   shellCard: { width: 'min(100%, 420px)', padding: '24px 20px', borderRadius: 18, background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.08)', textAlign: 'center' },
+  shellBackButton: { marginBottom: 14 },
   shellTitle: { fontSize: 18, marginBottom: 12 },
   main: { width: '100%', maxWidth: 1100, margin: '0 auto', padding: 'clamp(18px, 4vw, 48px) clamp(14px, 3vw, 28px)' },
+  backButton: { marginBottom: 16 },
   card: { padding: 'clamp(18px, 3vw, 28px)', borderRadius: 28, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.06)', boxShadow: '0 24px 70px rgba(0,0,0,0.28)' },
   kicker: { color: '#a9a9b6', fontWeight: 700, marginBottom: 8 },
   title: { fontSize: 'clamp(30px, 6vw, 60px)', lineHeight: 1.02, margin: 0, fontWeight: 900, letterSpacing: '-0.05em', overflowWrap: 'anywhere' },

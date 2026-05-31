@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
+import BackButton from '../components/BackButton.jsx'
 import { getApiBaseUrl } from '../services/api.js'
 import { getPaystackKey } from '../config/paystack.js'
+import { PAYSTACK_CALLBACK_URL } from '../services/paystack.js'
 
 const themeMap = {
   minimal: { bg: ['#10262b', '#081722'], accent: '#5eead4' },
@@ -96,6 +98,19 @@ export default function PublicEventPage() {
         : ticketFeeAmount
     const donationValue = Number(donation || 0)
     const totalDue = baseAmount + feeAmount + donationValue
+    const amountInKobo = Math.round(totalDue * 100)
+    const ticketQuantity = 1
+    const ticketPayload = {
+      email: form.email,
+      amount: amountInKobo,
+      publicKey: paystackKey,
+      callback_url: PAYSTACK_CALLBACK_URL,
+      metadata: {
+        type: 'ticket',
+        eventId: eventId,
+        quantity: ticketQuantity,
+      },
+    }
 
     if (totalDue > 0 && !paystackKey) {
       console.error('Paystack public key missing. Check environment configuration.')
@@ -108,10 +123,21 @@ export default function PublicEventPage() {
       const res = await fetch(`${API_BASE}/tickets/events/${eventId}/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...form, ticketType: selectedTicketType, donation: Number(donation || 0) }),
+        body: JSON.stringify({
+          ...form,
+          ticketType: selectedTicketType,
+          donation: Number(donation || 0),
+          paystackConfig: ticketPayload,
+          metadata: ticketPayload.metadata,
+        }),
       })
       const payload = await res.json()
       if (!res.ok) throw new Error(payload.message || 'Failed to reserve ticket')
+
+      if (payload.data?.authorization_url) {
+        window.location.href = payload.data.authorization_url
+        return
+      }
 
       if (!payload.data?.paymentRequired) {
         const ticketId = payload.data?.ticket?.ticketId
@@ -120,12 +146,6 @@ export default function PublicEventPage() {
         navigate(`/tickets/${ticketId}?success=1${isDuplicate ? '&duplicate=1' : ''}`)
         return
       }
-
-      if (!payload.data?.redirect) {
-        throw new Error('Payment redirect is missing')
-      }
-
-      window.location.href = payload.data.redirect
     } catch (err) {
       setError(err.message)
     } finally {
@@ -146,9 +166,7 @@ export default function PublicEventPage() {
           <span style={{ ...styles.logo, color: theme.accent }}>✦</span>
           <span style={styles.brand}>EventsNest</span>
         </div>
-        <button type="button" style={styles.backBtn} onClick={() => navigate(`/events/${event.id}`)}>
-          Back to Overview
-        </button>
+        <BackButton fallback="/" />
       </header>
 
       {notice && (
@@ -362,6 +380,7 @@ function Shell({ message, actionLabel, onAction }) {
   return (
     <div style={styles.shellOnly}>
       <div style={styles.shellCard}>
+        <BackButton fallback="/" style={styles.shellBackButton} />
         <div style={styles.shellTitle}>{message}</div>
         {onAction && (
           <button type="button" style={styles.backBtn} onClick={onAction}>
@@ -426,6 +445,7 @@ const styles = {
   page: { minHeight: '100vh', color: '#e4e4e7', fontFamily: "system-ui, -apple-system, sans-serif", paddingBottom: 60 },
   shellOnly: { minHeight: '100vh', display: 'grid', placeItems: 'center', background: '#090a0f', color: '#e4e4e7' },
   shellCard: { padding: 32, borderRadius: 24, background: '#12131a', border: '1px solid rgba(255,255,255,0.06)', textAlign: 'center', maxWidth: 400 },
+  shellBackButton: { marginBottom: 14 },
   shellTitle: { fontSize: 16, marginBottom: 16, color: '#a1a1aa' },
   topbar: { height: 64, padding: '0 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.06)', background: 'rgba(10, 11, 15, 0.7)', backdropFilter: 'blur(12px)', position: 'sticky', top: 0, zIndex: 100 },
   brandRow: { display: 'flex', alignItems: 'center', gap: 8 },

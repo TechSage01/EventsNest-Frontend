@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
+import BackButton from '../components/BackButton.jsx'
 import { getApiBaseUrl } from '../services/api.js'
 import { useAuth } from '../context/AuthContext.jsx'
 
@@ -293,7 +294,7 @@ export default function EventOverviewPage({ user = null }) {
   const theme        = themeMap[event.theme] || themeMap.minimal
   const rsvpCount    = event.rsvpCount || (Array.isArray(event.rsvps) ? event.rsvps.length : 0)
   const invitedGuests= Array.isArray(event.invitedGuests) ? event.invitedGuests : []
-  const shortUrl     = `eventsnest.com/${event.id?.slice(0,8) || 'preview'}`
+  const shortUrl     = `eventsnest.xyz/${event.id?.slice(0,8) || 'preview'}`
 
   return (
     <div style={{ ...s.page, background:'#111114' }}>
@@ -301,6 +302,7 @@ export default function EventOverviewPage({ user = null }) {
       {/* ── topbar ── */}
       <header style={{...s.topbar, padding: isMobile ? '0 16px' : '0 28px'}}>
         <div style={s.topbarLeft}>
+          <BackButton fallback="/" style={isSmallMobile ? s.backBtnCompact : {}} />
           <span style={s.logo}>✦</span>
           {!isSmallMobile && <span style={s.brand}>EventsNest</span>}
         </div>
@@ -807,6 +809,7 @@ function LoadingShell() {
   return (
     <div style={s.shell}>
       <div style={s.shellCard}>
+        <BackButton fallback="/" style={s.shellBackButton} />
         <div style={{ fontSize:28, marginBottom:12, animation:'spin 1s linear infinite' }}>✦</div>
         <div style={{ color:'#9a9aaa' }}>Loading event...</div>
       </div>
@@ -818,6 +821,7 @@ function ErrorShell({ message, onBack }) {
   return (
     <div style={s.shell}>
       <div style={s.shellCard}>
+        <BackButton fallback="/" style={s.shellBackButton} />
         <div style={{ fontSize:16, marginBottom:16, color:'#f87171' }}>{message}</div>
         <button style={s.btn} onClick={onBack}>← Back to Events</button>
       </div>
@@ -863,6 +867,7 @@ const s = {
   /* topbar */
   topbar:      { height:60, display:'flex', alignItems:'center', justifyContent:'space-between', background:'rgba(17,17,20,0.9)', backdropFilter:'blur(20px)', WebkitBackdropFilter:'blur(20px)', borderBottom:'1px solid rgba(255,255,255,0.06)', position:'sticky', top:0, zIndex:50 },
   topbarLeft:  { display:'flex', alignItems:'center', gap:10 },
+  backBtnCompact: { padding: '9px 10px', minWidth: 40 },
   logo:        { color:'#a78bfa', fontSize:20 },
   brand:       { fontSize:16, fontWeight:700, letterSpacing:'-.3px' },
   eventPageBtn:{ background:'rgba(255,255,255,0.07)', color:'#ccc', border:'1px solid rgba(255,255,255,0.08)', borderRadius:999, padding:'8px 16px', fontWeight:600, cursor:'pointer', fontSize:13, fontFamily:"'DM Sans',system-ui,sans-serif" },

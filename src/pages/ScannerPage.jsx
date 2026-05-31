@@ -1,16 +1,31 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
+import { BrowserQRCodeReader } from '@zxing/browser'
+import BackButton from '../components/BackButton.jsx'
 import { apiRequest } from '../services/api.js'
 
-export default function ScannerPage({ user }) {
+export default function ScannerPage() {
   const { eventId } = useParams()
   const videoRef = useRef(null)
+  const readerRef = useRef(null)
+  const controlsRef = useRef(null)
   const lastScanRef = useRef('')
   const verifyingRef = useRef(false)
+
   const [status, setStatus] = useState('')
   const [scanning, setScanning] = useState(false)
   const [stats, setStats] = useState(null)
   const [manual, setManual] = useState('')
+  const [devices, setDevices] = useState([])
+  const [activeDeviceId, setActiveDeviceId] = useState('')
+  const [cameraError, setCameraError] = useState('')
+
+  const canUseCamera = useMemo(() => {
+    if (typeof window === 'undefined') return false
+    if (!navigator.mediaDevices?.getUserMedia) return false
+    if (window.isSecureContext) return true
+    return window.location.hostname === 'localhost'
+  }, [])
 
   useEffect(() => {
     fetchStats()
@@ -27,90 +42,119 @@ export default function ScannerPage({ user }) {
   }
 
   useEffect(() => {
-    let stream = null
-    let detector = null
-    let rafId = null
+    let cancelled = false
 
-    async function start() {
+    async function initCamera() {
+      if (!canUseCamera) {
+        setCameraError('Camera access requires HTTPS (or localhost) and browser permission.')
+        setStatus('Camera unavailable. Use manual input.')
+        return
+      }
+
       try {
-        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
-        if (videoRef.current) videoRef.current.srcObject = stream
-        // prefer native BarcodeDetector when available
-        if (window.BarcodeDetector && BarcodeDetector.getSupportedFormats) {
-          const formats = await BarcodeDetector.getSupportedFormats()
-          if (formats.includes('qr_code')) {
-            detector = new BarcodeDetector({ formats: ['qr_code'] })
-            setScanning(true)
-            detectLoop()
-            return
-          }
+        readerRef.current = new BrowserQRCodeReader()
+        const foundDevices = await BrowserQRCodeReader.listVideoInputDevices()
+        if (cancelled) return
+
+        if (!foundDevices.length) {
+          setCameraError('No camera found on this device.')
+          setStatus('No camera found. Use manual input.')
+          return
         }
-        // fallback: show manual input
-        setStatus('Camera available but no BarcodeDetector support. Use manual input.')
+
+        setDevices(foundDevices)
+        const preferred = pickDefaultDevice(foundDevices)
+        setActiveDeviceId(preferred?.deviceId || foundDevices[0].deviceId)
       } catch (err) {
-        console.error('Camera start failed', err)
-        setStatus('Camera access denied or unavailable. Use manual input.')
+        if (cancelled) return
+        setCameraError(getCameraErrorMessage(err))
+        setStatus('Camera error. Use manual input.')
       }
     }
 
-    async function detectLoop() {
-      if (!videoRef.current || !detector) return
-      try {
-        const detections = await detector.detect(videoRef.current)
-        if (detections && detections.length) {
-          const code = detections[0].rawValue
-          if (code) await handleScanned(code)
-        }
-      } catch (err) {
-        // ignore per-frame errors
-      }
-      rafId = requestAnimationFrame(detectLoop)
-    }
-
-    start()
+    initCamera()
 
     return () => {
-      setScanning(false)
-      if (rafId) cancelAnimationFrame(rafId)
-      if (stream) {
-        stream.getTracks().forEach(t => t.stop())
+      cancelled = true
+      controlsRef.current?.stop()
+      readerRef.current?.reset?.()
+    }
+  }, [canUseCamera, eventId])
+
+  useEffect(() => {
+    let cancelled = false
+
+    async function startScanning() {
+      if (!activeDeviceId || !readerRef.current || !videoRef.current) return
+
+      try {
+        controlsRef.current?.stop()
+        setCameraError('')
+        setStatus('Scanner ready')
+
+        const controls = await readerRef.current.decodeFromVideoDevice(
+          activeDeviceId,
+          videoRef.current,
+          (result) => {
+            if (!result) return
+            if (cancelled) return
+            handleScanned(result.getText())
+          }
+        )
+
+        controlsRef.current = controls
+        setScanning(true)
+      } catch (err) {
+        if (cancelled) return
+        setCameraError(getCameraErrorMessage(err))
+        setStatus('Camera error. Use manual input.')
+        setScanning(false)
       }
     }
-    // eslint-disable-next-line
-  }, [eventId])
+
+    startScanning()
+    return () => {
+      cancelled = true
+      controlsRef.current?.stop()
+    }
+  }, [activeDeviceId])
 
   async function handleScanned(raw) {
-    // avoid double handling
     if (!raw || verifyingRef.current) return
     if (raw === lastScanRef.current) return
     lastScanRef.current = raw
-    setStatus(`Scanned: ${raw}`)
-    const ticketId = extractTicketId(raw)
-    if (!ticketId) {
-      setStatus('Could not parse ticket id from QR')
+    const ticketReference = extractTicketReference(raw)
+    if (!ticketReference) {
+      setStatus('Could not parse a ticket reference from the QR code.')
       return
     }
-    await verifyTicket(ticketId)
+    await verifyTicket(ticketReference)
   }
 
-  function extractTicketId(raw) {
+  function extractTicketReference(raw) {
     try {
       const url = new URL(raw)
+      const reference = url.searchParams.get('ticketReference') || url.searchParams.get('ticketId')
+      if (reference) return reference
+
       const parts = url.pathname.split('/')
       const idx = parts.indexOf('tickets')
-      if (idx >= 0 && parts[idx+1]) return parts[idx+1]
+      if (idx >= 0 && parts[idx + 1]) return parts[idx + 1]
     } catch (_) {}
-    // fallback: if raw looks like a ticket id (alphanumeric with dashes)
+
     if (/^[A-Za-z0-9\-]{6,}$/.test(raw)) return raw
     return null
   }
 
-  async function verifyTicket(ticketId) {
-    if (!ticketId || verifyingRef.current) return
+  async function verifyTicket(ticketReference) {
+    if (!ticketReference || verifyingRef.current) return
     verifyingRef.current = true
     try {
-      setStatus('Verifying...')
-      const payload = await apiRequest(`/tickets/${ticketId}/verify`, { method: 'POST' })
+      setStatus('Verifying ticket...')
+      const payload = await apiRequest('/tickets/verify', {
+        method: 'POST',
+        body: JSON.stringify({ ticketReference }),
+      })
       setStatus(`Check-in successful: ${payload.message || 'OK'}`)
       fetchStats()
     } catch (err) {
@@ -124,10 +168,11 @@ export default function ScannerPage({ user }) {
   return (
     <div style={styles.page}>
       <div style={styles.shell}>
+        <BackButton fallback="/" />
         <header style={styles.header}>
           <div>
             <h2 style={styles.title}>Event Check-in</h2>
-            <p style={styles.subTitle}>Scan QR codes or paste a ticket ID to check guests in at the door.</p>
+            <p style={styles.subTitle}>Scan QR codes or paste a ticket reference to check guests in at the door.</p>
           </div>
           <div style={styles.cameraState}>{scanning ? 'Scanning active' : 'Camera ready'}</div>
         </header>
@@ -147,6 +192,23 @@ export default function ScannerPage({ user }) {
           <section style={styles.cameraPanel}>
             <video ref={videoRef} autoPlay playsInline muted style={styles.video} />
             <div style={styles.cameraHint}>Align the QR code inside the frame.</div>
+            {devices.length > 1 && (
+              <div style={styles.cameraSwitchRow}>
+                <label style={styles.panelLabel}>Camera</label>
+                <select
+                  value={activeDeviceId}
+                  onChange={(e) => setActiveDeviceId(e.target.value)}
+                  style={styles.cameraSelect}
+                >
+                  {devices.map((device) => (
+                    <option key={device.deviceId} value={device.deviceId}>
+                      {device.label || `Camera ${device.deviceId.slice(0, 4)}`}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+            {cameraError && <div style={styles.cameraError}>{cameraError}</div>}
           </section>
 
           <aside style={styles.sidePanel}>
@@ -160,7 +222,7 @@ export default function ScannerPage({ user }) {
               <input
                 value={manual}
                 onChange={e => setManual(e.target.value)}
-                placeholder="Paste ticket URL or id"
+                placeholder="Paste ticket URL or reference"
                 style={styles.manualInput}
               />
               <button onClick={() => verifyTicket(manual)} style={styles.verifyBtn}>
@@ -174,10 +236,23 @@ export default function ScannerPage({ user }) {
   )
 }
 
+function pickDefaultDevice(devices) {
+  return devices.find(device => /back|rear|environment/i.test(device.label)) || devices[0]
+}
+
+function getCameraErrorMessage(error) {
+  const name = String(error?.name || '')
+  if (name === 'NotAllowedError') return 'Camera permission denied. Please allow access and refresh.'
+  if (name === 'NotFoundError') return 'No camera found on this device.'
+  if (name === 'NotReadableError') return 'Camera is already in use by another application.'
+  if (name === 'NotSupportedError') return 'Camera is not supported in this browser.'
+  return 'Unable to start the camera. Use manual input instead.'
+}
+
 const styles = {
   page: {
     minHeight: '100vh',
-    padding: '24px',
+    padding: 'clamp(14px, 3vw, 24px)',
     background: 'radial-gradient(circle at top, rgba(167,139,250,0.12), transparent 30%), #0b0b10',
     color: '#f3f4f6',
     fontFamily: "'DM Sans', system-ui, sans-serif",
@@ -214,7 +289,7 @@ const styles = {
   statsTitle: { fontSize: 18, fontWeight: 800, marginBottom: 12 },
   statsGrid: {
     display: 'grid',
-    gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 150px), 1fr))',
     gap: 12,
   },
   statCard: {
@@ -227,7 +302,7 @@ const styles = {
   },
   layout: {
     display: 'grid',
-    gridTemplateColumns: 'minmax(0, 1.8fr) minmax(320px, 0.8fr)',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 320px), 1fr))',
     gap: 20,
     alignItems: 'start',
   },
@@ -240,12 +315,36 @@ const styles = {
   video: {
     width: '100%',
     aspectRatio: '16 / 10',
-    minHeight: 560,
+    minHeight: 'min(56vw, 560px)',
     borderRadius: 18,
     background: '#000',
     objectFit: 'cover',
   },
   cameraHint: { marginTop: 12, color: '#a1a1aa', fontSize: 14 },
+  cameraSwitchRow: {
+    display: 'grid',
+    gap: 8,
+    marginTop: 12,
+  },
+  cameraSelect: {
+    width: '100%',
+    padding: '10px 12px',
+    borderRadius: 12,
+    border: '1px solid rgba(255,255,255,0.08)',
+    background: 'rgba(0,0,0,0.25)',
+    color: '#f3f4f6',
+    fontSize: 13,
+  },
+  cameraError: {
+    marginTop: 12,
+    padding: '10px 12px',
+    borderRadius: 12,
+    background: 'rgba(248,113,113,0.12)',
+    border: '1px solid rgba(248,113,113,0.2)',
+    color: '#fca5a5',
+    fontSize: 13,
+    fontWeight: 600,
+  },
   sidePanel: {
     display: 'grid',
     gap: 16,
@@ -275,6 +374,7 @@ const styles = {
   },
   manualInput: {
     width: '100%',
+    boxSizing: 'border-box',
     padding: '12px 14px',
     borderRadius: 12,
     border: '1px solid rgba(255,255,255,0.08)',

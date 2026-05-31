@@ -1,15 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { apiRequest } from '../services/api.js'
+import { usePlatformStats } from '../hooks/usePlatformStats.js'
 import './DiscoverPage.css'
 
 const filters = ['All', 'Featured', 'Music', 'Business', 'Community', 'Workshops', 'Nightlife']
-
-const highlights = [
-  { label: 'Cities this week', value: '12' },
-  { label: 'Featured drops',   value: '48' },
-  { label: 'Avg. attendance',  value: '180' },
-]
 
 const sidePicks = [
   'Tech meetups',
@@ -26,6 +21,19 @@ export default function DiscoverPage() {
   const [events, setEvents] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const { stats, loading: statsLoading } = usePlatformStats()
+
+  const formatMetric = (value) => {
+    const num = Number(value || 0)
+    if (!Number.isFinite(num) || num <= 0) return '—'
+    return num.toLocaleString('en-NG')
+  }
+
+  const highlights = [
+    { label: 'Total events', value: formatMetric(stats?.totalEvents) },
+    { label: 'Tickets sold', value: formatMetric(stats?.totalTicketsSold) },
+    { label: 'Total votes', value: formatMetric(stats?.totalVotes) },
+  ]
 
   useEffect(() => {
     let alive = true
@@ -119,7 +127,7 @@ export default function DiscoverPage() {
           <div className="dp-highlights">
             {highlights.map(item => (
               <article key={item.label} className="dp-highlight-card">
-                <span className="dp-highlight-val">{item.value}</span>
+                <span className="dp-highlight-val">{statsLoading ? '...' : item.value}</span>
                 <span className="dp-highlight-lbl">{item.label}</span>
               </article>
             ))}

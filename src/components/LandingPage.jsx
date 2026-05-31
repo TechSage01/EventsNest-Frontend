@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { usePlatformStats } from '../hooks/usePlatformStats.js'
 import screenImage from '../assets/screen.png'
 import heroImage from '../assets/hero.png'
 import phoneVideo from '../assets/phone-dark.webm'
@@ -56,6 +57,19 @@ function LandingPage() {
   const [lagosTime, setLagosTime] = useState(() => formatNigeriaTime(new Date()))
   const [menuOpen, setMenuOpen] = useState(false)
   const navigate = useNavigate()
+  const { stats, loading: statsLoading, error: statsError } = usePlatformStats()
+
+  const formatMetric = (value) => {
+    const num = Number(value || 0)
+    if (!Number.isFinite(num) || num <= 0) return '—'
+    return num.toLocaleString('en-NG')
+  }
+
+  const statsItems = [
+    { label: 'Events hosted', value: formatMetric(stats?.totalEvents) },
+    { label: 'Tickets sold', value: formatMetric(stats?.totalTicketsSold) },
+    { label: 'Total votes', value: formatMetric(stats?.totalVotes) },
+  ]
 
   useEffect(() => {
     const closeMenuOnResize = () => {
@@ -134,20 +148,21 @@ function LandingPage() {
           </div>
 
           <div className="ls-stats-row">
-            <div className="ls-stat">
-              <strong>500+</strong>
-              <span>Events hosted</span>
-            </div>
-            <div className="ls-stat-divider" />
-            <div className="ls-stat">
-              <strong>12k+</strong>
-              <span>Tickets sold</span>
-            </div>
-            <div className="ls-stat-divider" />
-            <div className="ls-stat">
-              <strong>Lagos</strong>
-              <span>Built for Nigeria</span>
-            </div>
+            {statsItems.map((item, index) => (
+              <div key={item.label} style={{ display: 'contents' }}>
+                <div className="ls-stat">
+                  <strong>{statsLoading ? '...' : item.value}</strong>
+                  <span>{item.label}</span>
+                </div>
+                {index < statsItems.length - 1 && <div className="ls-stat-divider" />}
+              </div>
+            ))}
+            {!statsLoading && statsError && (
+              <div className="ls-stat">
+                <strong>—</strong>
+                <span>Stats unavailable</span>
+              </div>
+            )}
           </div>
         </div>
 

@@ -1,11 +1,14 @@
 import { useMemo } from 'react'
-import { useNavigate, useSearchParams } from 'react-router-dom'
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom'
+import BackButton from '../components/BackButton.jsx'
 
 export default function ThankYouPage() {
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
+  const location = useLocation()
 
-  const kind = searchParams.get('type') || 'ticket'
+  const pathname = String(location.pathname || '').toLowerCase()
+  const kind = searchParams.get('type') || (pathname.includes('vote') ? 'vote' : 'ticket')
   const backUrl = searchParams.get('back') || '/events'
   const ticketUrl = searchParams.get('ticketUrl') || ''
   const title = searchParams.get('title') || (kind === 'vote' ? 'Thank you for voting' : 'Thank you for your payment')
@@ -19,6 +22,7 @@ export default function ThankYouPage() {
   return (
     <div style={styles.page}>
       <main style={styles.main}>
+        <BackButton fallback="/" style={styles.backButton} />
         <section style={styles.card}>
           <div style={styles.badge}>{kind === 'vote' ? 'Vote Complete' : 'Ticket Complete'}</div>
           <h1 style={styles.title}>{title}</h1>
@@ -54,6 +58,7 @@ const styles = {
     padding: 24,
   },
   main: { width: '100%', maxWidth: 760 },
+  backButton: { marginBottom: 16 },
   card: {
     padding: '40px 28px',
     borderRadius: 28,
