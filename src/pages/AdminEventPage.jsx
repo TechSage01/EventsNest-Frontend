@@ -132,6 +132,23 @@ function getAwardNominees(award) {
   );
 }
 
+function normalizeTicket(ticket) {
+  return {
+    id: ticket?.id || ticket?._id || ticket?.ticketId || String(ticket?.ticketId || ""),
+    ticketId: ticket?.ticketId || "",
+    eventId: ticket?.eventId || "",
+    attendeeName: ticket?.attendeeName || ticket?.name || "",
+    attendeeEmail: ticket?.attendeeEmail || ticket?.email || "",
+    ticketType: ticket?.ticketType || ticket?.type || "",
+    price: ticket?.price ?? 0,
+    amountPaid: ticket?.amountPaid ?? ticket?.price ?? 0,
+    status: ticket?.status || ticket?.paymentStatus || "pending",
+    paymentReference: ticket?.paymentReference || "",
+    checkedInAt: ticket?.checkedInAt || null,
+    createdAt: ticket?.createdAt || null,
+  };
+}
+
 export default function AdminEventPage({ user = null }) {
   const { eventId } = useParams();
   const navigate = useNavigate();
@@ -411,15 +428,46 @@ export default function AdminEventPage({ user = null }) {
   unscannedTickets = [],
   awards = [],
   } = data;
-  const resolvedTotalTickets =
-  Number(totalTickets || ticketCount || totalTicketCount || 0);
+  const allTickets = Array.isArray(data.tickets) ? data.tickets.map(normalizeTicket) : [];
+  const normalizedPaidTickets =
+    Array.isArray(paidTickets) && paidTickets.length > 0
+      ? paidTickets
+      : allTickets.filter(
+          (ticket) =>
+            String(ticket.status || "").toLowerCase() === "confirmed" &&
+            Number(ticket.price || ticket.amountPaid || 0) > 0,
+        );
+  const normalizedFreeTickets = allTickets.filter(
+    (ticket) =>
+      String(ticket.status || "").toLowerCase() === "confirmed" &&
+      Number(ticket.price || ticket.amountPaid || 0) <= 0,
+  );
+  const normalizedScannedTickets =
+    Array.isArray(scannedTickets) && scannedTickets.length > 0
+      ? scannedTickets
+      : allTickets.filter(
+          (ticket) => String(ticket.status || "").toLowerCase() === "checked-in",
+        );
+  const normalizedUnscannedTickets =
+    Array.isArray(unscannedTickets) && unscannedTickets.length > 0
+      ? unscannedTickets
+      : allTickets.filter(
+          (ticket) => String(ticket.status || "").toLowerCase() === "confirmed",
+        );
   const safeAwards = Array.isArray(awards) ? awards : [];
-  const vipPaidCount = paidTickets.filter(
+  const resolvedPaidCount = Number(paidCount || normalizedPaidTickets.length || 0);
+  const resolvedFreeCount = Number(freeCount || normalizedFreeTickets.length || 0);
+  const vipPaidCount = normalizedPaidTickets.filter(
     (ticket) => String(ticket?.ticketType || "").toLowerCase() === "vip",
   ).length;
-  const tablePaidCount = paidTickets.filter(
+  const tablePaidCount = normalizedPaidTickets.filter(
     (ticket) => String(ticket?.ticketType || "").toLowerCase() === "table",
   ).length;
+
+  const resolvedScannedCount = Number(scannedCount || normalizedScannedTickets.length || 0);
+  const resolvedUnscannedCount = Number(unscannedCount || normalizedUnscannedTickets.length || 0);
+  const resolvedTicketTotal =
+    Number(totalTickets || ticketCount || totalTicketCount || allTickets.length || 0);
 
   const currentNominees =
     form.nominees.length > 0 ? form.nominees : [{ name: "", imageUrl: "" }];
@@ -477,12 +525,12 @@ export default function AdminEventPage({ user = null }) {
         {/* ─── STATS ─── */}
         <div style={A.statsGrid}>
           {[
-            { label: "Paid Tickets", value: paidCount, color: "#a78bfa" },
+            { label: "Paid Tickets", value: resolvedPaidCount, color: "#a78bfa" },
             { label: "VIP Paid", value: vipPaidCount, color: "#c084fc" },
             { label: "Table Paid", value: tablePaidCount, color: "#f472b6" },
-            { label: "Free Tickets", value: freeCount, color: "#38bdf8" },
-            { label: "Checked In", value: scannedCount, color: "#4ade80" },
-            { label: "Not Scanned", value: unscannedCount, color: "#fb7185" },
+            { label: "Free Tickets", value: resolvedFreeCount, color: "#38bdf8" },
+            { label: "Checked In", value: resolvedScannedCount, color: "#4ade80" },
+            { label: "Not Scanned", value: resolvedUnscannedCount, color: "#fb7185" },
             { label: "Awards", value: safeAwards.length, color: "#fbbf24" },
             {
               label: "Total Votes",
@@ -493,7 +541,7 @@ export default function AdminEventPage({ user = null }) {
               ),
               color: "#fb923c",
             },
-            { label: "Total Tickets", value: resolvedTotalTickets, color: "#60a5fa" },
+            { label: "Total Tickets", value: resolvedTicketTotal, color: "#60a5fa" },
           ].map((s) => (
             <div key={s.label} style={A.statCard}>
               <div style={A.statLabel}>{s.label}</div>
@@ -683,27 +731,27 @@ export default function AdminEventPage({ user = null }) {
           <div style={A.panel}>
             <div style={A.panelHead}>
               <span style={A.panelIcon}>💳</span> Paid Attendees{" "}
-              <span style={A.countBadge}>{paidTickets.length}</span>
+              <span style={A.countBadge}>{normalizedPaidTickets.length}</span>
             </div>
-            <TicketList tickets={paidTickets} type="paid" />
+            <TicketList tickets={normalizedPaidTickets} type="paid" />
           </div>
 
           {/* CHECKED-IN */}
           <div style={A.panel}>
             <div style={A.panelHead}>
               <span style={A.panelIcon}>✅</span> Checked In{" "}
-              <span style={A.countBadge}>{scannedTickets.length}</span>
+              <span style={A.countBadge}>{normalizedScannedTickets.length}</span>
             </div>
-            <TicketList tickets={scannedTickets} type="scanned" />
+            <TicketList tickets={normalizedScannedTickets} type="scanned" />
           </div>
 
           {/* NOT SCANNED */}
           <div style={A.panel}>
             <div style={A.panelHead}>
               <span style={A.panelIcon}>⏳</span> Not Scanned Yet{" "}
-              <span style={A.countBadge}>{unscannedTickets.length}</span>
+              <span style={A.countBadge}>{normalizedUnscannedTickets.length}</span>
             </div>
-            <TicketList tickets={unscannedTickets} type="unscanned" />
+            <TicketList tickets={normalizedUnscannedTickets} type="unscanned" />
           </div>
 
           {/* AWARDS & VOTES — full width */}
@@ -877,108 +925,125 @@ export default function AdminEventPage({ user = null }) {
                       </div>
 
                       {/* nominee leaderboard */}
-                      <div style={A.nomineeLeaderboard}>
-                        {nominees.length === 0 ? (
-                          <p style={A.empty}>No nominees.</p>
-                        ) : (
-                          nominees
-                            .map((n) => ({
-                              ...n,
-                              votes:
-                                Number(n.voteCount || 0) ||
-                                countNomineeVotes(award, n),
-                            }))
-                            .sort((a, b) => b.votes - a.votes)
-                            .map((n, rank) => {
-                              const pct =
-                                totalAwardVotes > 0
-                                  ? Math.round(
-                                      (n.votes / totalAwardVotes) * 100,
-                                    )
-                                  : 0;
-                              const isLeader = rank === 0 && n.votes > 0;
-                              return (
-                                <div
-                                  key={n.slug || n.name}
-                                  style={{
-                                    ...A.nomineeRow,
-                                    ...(isLeader ? A.nomineeRowLeader : {}),
-                                  }}
-                                >
-                                  {/* rank */}
+                      {isOrganizer ? (
+                        <div style={A.nomineeLeaderboard}>
+                          {nominees.length === 0 ? (
+                            <p style={A.empty}>No nominees.</p>
+                          ) : (
+                            nominees
+                              .map((n) => ({
+                                ...n,
+                                votes:
+                                  Number(n.voteCount || 0) ||
+                                  countNomineeVotes(award, n),
+                              }))
+                              .sort((a, b) => b.votes - a.votes)
+                              .map((n, rank) => {
+                                const pct =
+                                  totalAwardVotes > 0
+                                    ? Math.round(
+                                        (n.votes / totalAwardVotes) * 100,
+                                      )
+                                    : 0;
+                                const isLeader = rank === 0 && n.votes > 0;
+                                return (
                                   <div
+                                    key={n.slug || n.name}
                                     style={{
-                                      ...A.rankBadge,
-                                      ...(rank < 3
-                                        ? {
-                                            background:
-                                              ["#fbbf24", "#9ca3af", "#f97316"][
-                                                rank
-                                              ] + "22",
-                                            color: [
-                                              "#fbbf24",
-                                              "#9ca3af",
-                                              "#f97316",
-                                            ][rank],
-                                          }
-                                        : {}),
+                                      ...A.nomineeRow,
+                                      ...(isLeader ? A.nomineeRowLeader : {}),
                                     }}
                                   >
-                                    #{rank + 1}
-                                  </div>
-                                  {/* avatar */}
-                                  {n.imageUrl ? (
-                                    <img
-                                      src={n.imageUrl}
-                                      alt={n.name}
-                                      style={A.nomineeAvatar}
-                                    />
-                                  ) : (
-                                    <div style={A.nomineeAvatarFb}>
-                                      {String(n.name).charAt(0).toUpperCase()}
-                                    </div>
-                                  )}
-                                  {/* name + bar */}
-                                  <div style={{ flex: 1, minWidth: 0 }}>
-                                    <div style={A.nomineeName}>
-                                      {n.name}
-                                      {isLeader && (
-                                        <span style={A.leaderTag}>
-                                          👑 Leading
-                                        </span>
-                                      )}
-                                    </div>
-                                    <div style={A.barTrack}>
-                                      <div
-                                        style={{
-                                          ...A.barFill,
-                                          width: `${pct}%`,
-                                          background: isLeader
-                                            ? "#a78bfa"
-                                            : "rgba(255,255,255,0.25)",
-                                        }}
-                                      />
-                                    </div>
-                                  </div>
-                                  {/* vote count */}
-                                  <div style={A.nomineeVotes}>
-                                    <span
+                                    {/* rank */}
+                                    <div
                                       style={{
-                                        ...A.voteCount,
-                                        ...(isLeader
-                                          ? { color: "#a78bfa" }
+                                        ...A.rankBadge,
+                                        ...(rank < 3
+                                          ? {
+                                              background:
+                                                [
+                                                  "#fbbf24",
+                                                  "#9ca3af",
+                                                  "#f97316",
+                                                ][rank] + "22",
+                                              color: [
+                                                "#fbbf24",
+                                                "#9ca3af",
+                                                "#f97316",
+                                              ][rank],
+                                            }
                                           : {}),
                                       }}
                                     >
-                                      {n.votes}
-                                    </span>
-                                    <span style={A.votePct}>{pct}%</span>
+                                      #{rank + 1}
+                                    </div>
+                                    {/* avatar */}
+                                    {n.imageUrl ? (
+                                      <img
+                                        src={n.imageUrl}
+                                        alt={n.name}
+                                        style={A.nomineeAvatar}
+                                      />
+                                    ) : (
+                                      <div style={A.nomineeAvatarFb}>
+                                        {String(n.name)
+                                          .charAt(0)
+                                          .toUpperCase()}
+                                      </div>
+                                    )}
+                                    {/* name + bar */}
+                                    <div style={{ flex: 1, minWidth: 0 }}>
+                                      <div style={A.nomineeName}>
+                                        {n.name}
+                                        {isLeader && (
+                                          <span style={A.leaderTag}>
+                                            👑 Leading
+                                          </span>
+                                        )}
+                                      </div>
+                                      <div style={A.barTrack}>
+                                        <div
+                                          style={{
+                                            ...A.barFill,
+                                            width: `${pct}%`,
+                                            background: isLeader
+                                              ? "#a78bfa"
+                                              : "rgba(255,255,255,0.25)",
+                                          }}
+                                        />
+                                      </div>
+                                    </div>
+                                    {/* vote count */}
+                                    <div style={A.nomineeVotes}>
+                                      <span
+                                        style={{
+                                          ...A.voteCount,
+                                          ...(isLeader
+                                            ? { color: "#a78bfa" }
+                                            : {}),
+                                        }}
+                                      >
+                                        {n.votes}
+                                      </span>
+                                      <span style={A.votePct}>{pct}%</span>
+                                    </div>
                                   </div>
-                                </div>
-                              );
-                            })
-                        )}
-                      </div>
+                                );
+                              })
+                          )}
+                        </div>
+                      ) : (
+                        <div style={A.nomineeLeaderboard}>
+                          <div style={A.empty}>
+                            Private Leaderboard — live leaderboard is available to the event organizer only.
+                          </div>
+                          {nominees.length > 0 && (
+                            <div style={{ marginTop: 8, fontSize: 13, color: '#9ca3af' }}>
+                              Showing static nominee counts available to co-hosts.
+                            </div>
+                          )}
+                        </div>
+                      )}
 
                       {/* recent votes */}
                       {(award.votes || []).length > 0 && (

@@ -16,6 +16,7 @@ export default function SignupPage() {
   const [success, setSuccess] = useState('')
   const [viewportWidth, setViewportWidth] = useState(() => (typeof window === 'undefined' ? 1024 : window.innerWidth))
   const navigate = useNavigate()
+  const isDev = import.meta.env.DEV || window.location.hostname === 'localhost'
 
   useEffect(() => {
     function handleResize() {
@@ -51,8 +52,13 @@ export default function SignupPage() {
       })
 
       const debugCode = payload.data?.debugCode
+
+      if (debugCode && !isDev) {
+        throw new Error('Email service is not configured on the server. Please try again later.')
+      }
+
       setSuccess(
-        debugCode
+        debugCode && isDev
           ? `${payload.message || 'Verification code sent.'} Dev code: ${debugCode}`
           : payload.message || 'Check your inbox for the verification code.'
       )

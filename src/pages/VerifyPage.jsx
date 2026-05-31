@@ -31,6 +31,7 @@ export default function VerifyPage() {
   const [canResend, setCanResend] = useState(false)
   const [resendLoading, setResendLoading] = useState(false)
   const [viewportWidth, setViewportWidth] = useState(() => (typeof window === 'undefined' ? 1024 : window.innerWidth))
+  const isDev = import.meta.env.DEV || window.location.hostname === 'localhost'
 
   const inputRefs = useRef([])
 
@@ -139,7 +140,11 @@ export default function VerifyPage() {
       })
 
       const debugCode = payload.data?.debugCode
-      setSuccess(debugCode ? `New code sent (dev): ${debugCode}` : 'New code sent — check your inbox')
+      if (debugCode && !isDev) {
+        throw new Error('Email service is not configured on the server. Please try again later.')
+      }
+
+      setSuccess(debugCode && isDev ? `New code sent (dev): ${debugCode}` : 'New code sent — check your inbox')
       setCountdown(600)
       setCanResend(false)
       setOtp('')
