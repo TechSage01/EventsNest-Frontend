@@ -256,8 +256,8 @@ export default function VotingPage() {
     let cancelled = false;
 
     async function loadContestants() {
-      const activeAwardId = heroAward?.id || awardId;
-      const awardToLoad = awards.find((a) => a.id === activeAwardId) || heroAward;
+      const activeAwardId = awardId || awards[0]?.id;
+      const awardToLoad = awards.find((a) => a.id === activeAwardId) || null;
       if (!awardToLoad?.id || !eventId) return;
 
       try {
@@ -288,7 +288,7 @@ export default function VotingPage() {
     return () => {
       cancelled = true;
     };
-  }, [API_BASE, awardId, eventId, heroAward?.id]);
+  }, [API_BASE, awardId, eventId, awards.length]);
 
   /* resolve selected nominee from URL slug or first */
   const defaultNominee = heroNominees[0]

@@ -39,7 +39,11 @@ export function getFriendlyErrorMessage(error) {
   if (lower.includes('failed to fetch') || lower.includes('networkerror') || lower.includes('network request failed')) {
     return 'Network problem. Please check your connection and try again.'
   }
-  if (lower.includes('resend_api_key is missing') || lower.includes('email_from is missing')) {
+  if (
+    lower.includes('resend_api_key is missing') ||
+    lower.includes('from_email is missing') ||
+    lower.includes('email_from is missing')
+  ) {
     return 'Email service is not set up yet on the server.'
   }
   if (lower.includes('failed to send verification code')) {
