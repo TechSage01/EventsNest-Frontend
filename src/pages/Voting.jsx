@@ -240,6 +240,18 @@ export default function VotingPage() {
     };
   }, [eventId]);
 
+  /* derive active award + nominee */
+  const heroAward = awards.find((a) => a.id === awardId) || awards[0] || null;
+  const heroNominees =
+    Array.isArray(heroAward?.contestants) && heroAward.contestants.length > 0
+      ? heroAward.contestants
+      : Array.isArray(heroAward?.nominees)
+        ? heroAward.nominees
+        : [];
+  const activeKey = heroAward?.id || awardId || eventId;
+  const voteReference = searchParams.get("reference");
+  const awardIdFromQuery = searchParams.get("awardId") || awardId;
+
   useEffect(() => {
     let cancelled = false;
 
@@ -277,18 +289,6 @@ export default function VotingPage() {
       cancelled = true;
     };
   }, [API_BASE, awardId, eventId, heroAward?.id]);
-
-  /* derive active award + nominee */
-  const heroAward = awards.find((a) => a.id === awardId) || awards[0] || null;
-  const heroNominees =
-    Array.isArray(heroAward?.contestants) && heroAward.contestants.length > 0
-      ? heroAward.contestants
-      : Array.isArray(heroAward?.nominees)
-        ? heroAward.nominees
-        : [];
-  const activeKey = heroAward?.id || awardId || eventId;
-  const voteReference = searchParams.get("reference");
-  const awardIdFromQuery = searchParams.get("awardId") || awardId;
 
   /* resolve selected nominee from URL slug or first */
   const defaultNominee = heroNominees[0]
